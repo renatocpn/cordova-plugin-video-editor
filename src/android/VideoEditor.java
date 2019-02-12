@@ -6,8 +6,8 @@ import java.net.URLDecoder;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
+import java.io.FileDescriptor;
 
-import android.graphics.Bitmap;
 import org.apache.cordova.CordovaPlugin;
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.PluginResult;
@@ -15,6 +15,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import android.graphics.Bitmap;
 import android.content.ContentUris;
 import android.content.Context;
 import android.content.Intent;
@@ -26,6 +27,7 @@ import android.media.MediaMetadataRetriever;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
+import android.os.ParcelFileDescriptor;
 import android.provider.DocumentsContract;
 import android.provider.MediaStore;
 import android.util.Log;
@@ -52,26 +54,30 @@ public class VideoEditor extends CordovaPlugin {
             try {
                 this.transcodeVideo(args);
             } catch (IOException e) {
-                callback.error(e.toString());
+                callback.error("error transcoding video: " + e.getMessage());
             }
             return true;
         } else if (action.equals("createThumbnail")) {
             try {
                 this.createThumbnail(args);
             } catch (IOException e) {
-                callback.error(e.toString());
+                callback.error("error creating thumbnail: " + e.getMessage());
             }
             return true;
         } else if (action.equals("getVideoInfo")) {
             try {
                 this.getVideoInfo(args);
             } catch (IOException e) {
-                callback.error(e.toString());
+                callback.error("error getting video info: " + e.getMessage());
             }
             return true;
         }
 
         return false;
+    }
+
+    private static Uri getUriByFile(Context ctx, File file) {
+        return FileProvider.getUriForFile(ctx, "cordova-plugin-video-editor.provider", file);
     }
 
     /**
@@ -84,8 +90,6 @@ public class VideoEditor extends CordovaPlugin {
      *
      * fileUri              - path to input video
      * outputFileName       - output file name
-     * saveToLibrary        - save to gallery
-     * deleteInputFile      - optionally remove input file
      * width                - width for the output video
      * height               - height for the output video
      * fps                  - fps the video
@@ -106,20 +110,29 @@ public class VideoEditor extends CordovaPlugin {
         JSONObject options = args.optJSONObject(0);
         Log.d(TAG, "options: " + options.toString());
 
-        final File inFile = this.resolveLocalFileSystemURI(options.getString("fileUri"));
-        if (!inFile.exists()) {
-            Log.d(TAG, "input file does not exist");
-            callback.error("input video does not exist.");
-            return;
-        }
+        final Uri fileUri = Uri.parse(options.getString("fileUri"));
+        final File inFile;
+        final String videoSrcPath;
 
-        final String videoSrcPath = inFile.getAbsolutePath();
+        if ("content".equalsIgnoreCase(fileUri.getScheme())) {
+            inFile = null;
+            videoSrcPath = fileUri.toString();
+        }
+        else {
+            inFile = this.resolveLocalFileSystemURI(fileUri.toString());
+            if (!inFile.exists()) {
+                Log.d(TAG, "input file does not exist");
+                callback.error("input video does not exist.");
+                return;
+            }
+            videoSrcPath = inFile.getAbsolutePath();
+        }
+        
         final String outputFileName = options.optString(
                 "outputFileName",
                 new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.ENGLISH).format(new Date())
         );
 
-        final boolean deleteInputFile = options.optBoolean("deleteInputFile", false);
         final int width = options.optInt("width", 0);
         final int height = options.optInt("height", 0);
         final int fps = options.optInt("fps", 24);
@@ -141,18 +154,8 @@ public class VideoEditor extends CordovaPlugin {
         }
         final String appName = (String) (ai != null ? pm.getApplicationLabel(ai) : "Unknown");
 
-        final boolean saveToLibrary = options.optBoolean("saveToLibrary", true);
-        File mediaStorageDir;
-
-        if (saveToLibrary) {
-            mediaStorageDir = new File(
-                    Environment.getExternalStorageDirectory() + "/Movies",
-                    appName
-            );
-        } else {
-            mediaStorageDir = new File(Environment.getExternalStorageDirectory().getAbsolutePath() + "/Android/data/" + cordova.getActivity().getPackageName() + "/files/files/videos");
-        }
-
+        File mediaStorageDir = new File(Environment.getExternalStorageDirectory().getAbsolutePath() + "/Android/data/" + cordova.getActivity().getPackageName() + "/files/files/videos");
+        
         if (!mediaStorageDir.exists()) {
             if (!mediaStorageDir.mkdirs()) {
                 callback.error("Can't access or make Movies directory");
@@ -160,19 +163,15 @@ public class VideoEditor extends CordovaPlugin {
             }
         }
 
-        final String outputFilePath = new File(
-                mediaStorageDir.getPath(),
-                outputFileName + outputExtension
-        ).getAbsolutePath();
+        final File outputFile = File.createTempFile(outputFileName, outputExtension, mediaStorageDir);
+        final Uri outputFileUri = getUriByFile(cordova.getActivity(), outputFile);
 
-        Log.d(TAG, "outputFilePath: " + outputFilePath);
+        Log.d(TAG, "outputFileUri: " + outputFileUri.toString());
 
         cordova.getThreadPool().execute(new Runnable() {
             public void run() {
 
                 try {
-
-                    FileInputStream fin = new FileInputStream(inFile);
 
                     MediaTranscoder.Listener listener = new MediaTranscoder.Listener() {
                         @Override
@@ -193,58 +192,40 @@ public class VideoEditor extends CordovaPlugin {
 
                         @Override
                         public void onTranscodeCompleted() {
-
-                            File outFile = new File(outputFilePath);
-                            if (!outFile.exists()) {
-                                Log.d(TAG, "outputFile doesn't exist!");
-                                callback.error("an error ocurred during transcoding");
-                                return;
-                            }
-
-                            // make the gallery display the new file if saving to library
-                            if (saveToLibrary) {
-                                Intent scanIntent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
-                                scanIntent.setData(Uri.fromFile(inFile));
-                                scanIntent.setData(Uri.fromFile(outFile));
-                                appContext.sendBroadcast(scanIntent);
-                            }
-
-                            if (deleteInputFile) {
-                                inFile.delete();
-                            }
-
-                            callback.success(outputFilePath);
+                            Log.d(TAG, "transcode completed");
+                            callback.success(outputFileUri.toString());
                         }
 
                         @Override
                         public void onTranscodeCanceled() {
+                            Log.e(TAG, "transcode canceled");
                             callback.error("transcode canceled");
-                            Log.d(TAG, "transcode canceled");
                         }
 
                         @Override
                         public void onTranscodeFailed(Exception exception) {
-                            callback.error(exception.toString());
-                            Log.d(TAG, "transcode exception", exception);
+                            Log.e(TAG, "transcode exception", exception);
+                            callback.error("transcode exception: " + exception.getMessage());
                         }
                     };
 
-                    MediaMetadataRetriever mmr = new MediaMetadataRetriever();
-                    mmr.setDataSource(videoSrcPath);
+                    FileDescriptor fd;
 
-                    String orientation;
-                    String mmrOrientation = mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION);
-                    Log.d(TAG, "mmrOrientation: " + mmrOrientation); // 0, 90, 180, or 270
+                    if ("content".equalsIgnoreCase(fileUri.getScheme())) {
+                        ParcelFileDescriptor pfd = cordova.getActivity().getContentResolver().openFileDescriptor(fileUri, "r");
+                        fd = pfd.getFileDescriptor();
+                    }
+                    else {
+                        FileInputStream fin = new FileInputStream(inFile);
+                        fd = fin.getFD();
+                    }
 
-                    float videoWidth = Float.parseFloat(mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH));
-                    float videoHeight = Float.parseFloat(mmr.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT));
-
-                    MediaTranscoder.getInstance().transcodeVideo(fin.getFD(), outputFilePath,
+                    MediaTranscoder.getInstance().transcodeVideo(fd, outputFile.getAbsolutePath(),
                             new CustomAndroidFormatStrategy(videoBitrate, fps, width, height), listener, videoDuration);
 
                 } catch (Throwable e) {
-                    Log.d(TAG, "transcode exception ", e);
-                    callback.error(e.toString());
+                    Log.e(TAG, "transcode exception", e);
+                    callback.error("transcode exception: " + e.getMessage());
                 }
 
             }
@@ -562,7 +543,7 @@ public class VideoEditor extends CordovaPlugin {
         }
         // MediaStore (and general)
         else if ("content".equalsIgnoreCase(uri.getScheme())) {
-            return getDataColumn(context, uri, null, null);
+            return uri.toString(); // Return content as-is
         }
         // File
         else if ("file".equalsIgnoreCase(uri.getScheme())) {

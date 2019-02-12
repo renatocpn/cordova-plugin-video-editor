@@ -57,7 +57,7 @@
     NSString *videoFileName = [options objectForKey:@"outputFileName"];
     CDVOutputFileType outputFileType = ([options objectForKey:@"outputFileType"]) ? [[options objectForKey:@"outputFileType"] intValue] : MPEG4;
     BOOL optimizeForNetworkUse = ([options objectForKey:@"optimizeForNetworkUse"]) ? [[options objectForKey:@"optimizeForNetworkUse"] intValue] : NO;
-    BOOL saveToPhotoAlbum = [options objectForKey:@"saveToLibrary"] ? [[options objectForKey:@"saveToLibrary"] boolValue] : YES;
+    //BOOL saveToPhotoAlbum = [options objectForKey:@"saveToLibrary"] ? [[options objectForKey:@"saveToLibrary"] boolValue] : YES;
     //float videoDuration = [[options objectForKey:@"duration"] floatValue];
     BOOL maintainAspectRatio = [options objectForKey:@"maintainAspectRatio"] ? [[options objectForKey:@"maintainAspectRatio"] boolValue] : YES;
     float width = [[options objectForKey:@"width"] floatValue];
@@ -91,18 +91,20 @@
     }
 
     // check if the video can be saved to photo album before going further
-    if (saveToPhotoAlbum && !UIVideoAtPathIsCompatibleWithSavedPhotosAlbum([inputFileURL path]))
+    /*if (saveToPhotoAlbum && !UIVideoAtPathIsCompatibleWithSavedPhotosAlbum([inputFileURL path]))
     {
         NSString *error = @"Video cannot be saved to photo album";
         [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_ERROR messageAsString:error ] callbackId:command.callbackId];
         return;
-    }
+    }*/
 
     AVURLAsset *avAsset = [AVURLAsset URLAssetWithURL:inputFileURL options:nil];
 
     NSString *cacheDir = [NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES) objectAtIndex:0];
-    NSString *outputPath = [NSString stringWithFormat:@"%@/%@%@", cacheDir, videoFileName, outputExtension];
-    NSURL *outputURL = [NSURL fileURLWithPath:outputPath];
+    NSString *outputPathWithoutScheme = [NSString stringWithFormat:@"%@/%@%@", cacheDir, videoFileName, outputExtension];
+    NSString *outputPath = [@"file://" stringByAppendingString:[NSString stringWithFormat:@"%@/%@%@", cacheDir, videoFileName, outputExtension]];
+    
+    NSURL *outputURL = [NSURL fileURLWithPath:outputPathWithoutScheme];
 
     NSArray *tracks = [avAsset tracksWithMediaType:AVMediaTypeVideo];
     AVAssetTrack *track = [tracks objectAtIndex:0];
@@ -215,9 +217,9 @@
         if (encoder.status == AVAssetExportSessionStatusCompleted)
         {
             NSLog(@"Video export succeeded");
-            if (saveToPhotoAlbum) {
+            /*if (saveToPhotoAlbum) {
                 UISaveVideoAtPathToSavedPhotosAlbum(outputPath, self, nil, nil);
-            }
+            }*/
             [self.commandDelegate sendPluginResult:[CDVPluginResult resultWithStatus:CDVCommandStatus_OK messageAsString:outputPath] callbackId:command.callbackId];
         }
         else if (encoder.status == AVAssetExportSessionStatusCancelled)

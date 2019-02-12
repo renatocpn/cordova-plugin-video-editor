@@ -29,10 +29,13 @@
 
         <!-- add plugin class -->
         <source-file src="src/android/VideoEditor.java" target-dir="src/org/apache/cordova/videoeditor" />
+        <source-file src="src/android/FileProvider.java" target-dir="src/org/apache/cordova/videoeditor" />
         <source-file src="src/android/CustomAndroidFormatStrategy.java" target-dir="src/org/apache/cordova/videoeditor" />
+        <source-file src="src/android/videoeditor_provider_paths.xml" target-dir="res/xml" />
 
         <framework src="src/android/build.gradle" custom="true" type="gradleReference" />
 
+        <hook type="after_prepare" src="hooks/AndroidAfterPrepare.js" />
     </platform>
 
     <!-- ios -->
