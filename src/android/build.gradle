@@ -5,7 +5,7 @@ repositories{
 }
 
 dependencies {
-    compile 'com.github.digital-alchimia:android-transcoder:v0.1.12R_ergovia-OS'
+    compile 'com.github.digital-alchimia:android-transcoder:v0.1.12R_ergovia-OS-2'
     compile 'com.android.support:support-v4:23.0.0'
 }
 
