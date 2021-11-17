@@ -1,6 +1,7 @@
+var fs = require( "fs" );
+
 module.exports = function(ctx) {
-    var fs = ctx.requireCordovaModule( "fs" ),
-        path = ctx.requireCordovaModule( "path" ),
+    var path = ctx.requireCordovaModule( "path" ),
         xml = ctx.requireCordovaModule( "cordova-common" ).xmlHelpers,
         et = ctx.requireCordovaModule( "elementtree" );
 
